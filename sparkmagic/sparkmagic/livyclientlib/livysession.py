@@ -18,7 +18,7 @@ from .exceptions import LivyClientTimeoutException, \
 class _HeartbeatThread(threading.Thread):
     def __init__(self, livy_session, refresh_seconds, retry_seconds, run_at_most=None):
         super(_HeartbeatThread, self).__init__()
-        
+
         self.livy_session = livy_session
         self.refresh_seconds = refresh_seconds
         self.retry_seconds = retry_seconds
@@ -27,10 +27,12 @@ class _HeartbeatThread(threading.Thread):
     def run(self):
         i = 0
         if self.livy_session is not None:
-            self.livy_session.logger.info(u'Starting heartbeat for session {}'.format(self.livy_session.id))
+            self.livy_session.logger.info(
+                u'Starting heartbeat for session {}'.format(self.livy_session.id))
         else:
-            self.livy_session.logger.info(u'Will not start heartbeat because session is none')
-        
+            self.livy_session.logger.info(
+                u'Will not start heartbeat because session is none')
+
         while self.livy_session is not None:
             try:
                 self.livy_session.refresh_status_and_info()
@@ -38,17 +40,18 @@ class _HeartbeatThread(threading.Thread):
             except Exception as e:
                 self.livy_session.logger.error(u'{}'.format(e))
                 sleep(self.retry_seconds)
-            
+
             if self.run_at_most is not None:
                 i += 1
-                
+
                 if i >= self.run_at_most:
                     return
 
     def stop(self):
         if self.livy_session is not None:
-            self.livy_session.logger.info(u'Stopping heartbeat for session {}'.format(self.livy_session.id))
-        
+            self.livy_session.logger.info(
+                u'Stopping heartbeat for session {}'.format(self.livy_session.id))
+
         self.livy_session = None
         self.join()
 
@@ -77,7 +80,8 @@ class LivySession(ObjectWithGuid):
             spark_events = SparkEvents()
         self._spark_events = spark_events
 
-        self._policy = ConfigurableRetryPolicy(retry_seconds_to_sleep_list=[0.2, 0.5, 0.5, 1, 1, 2], max_retries=5000)
+        self._policy = ConfigurableRetryPolicy(retry_seconds_to_sleep_list=[
+                                               0.2, 0.5, 0.5, 1, 1, 2], max_retries=5000)
         wait_for_idle_timeout_seconds = conf.wait_for_idle_timeout_seconds()
 
         assert wait_for_idle_timeout_seconds > 0
@@ -98,7 +102,7 @@ class LivySession(ObjectWithGuid):
         self.kind = kind
         self.id = session_id
         self.session_info = u""
-        
+
         self._heartbeat_thread = None
         if session_id == -1:
             self.status = constants.NOT_STARTED_SESSION_STATUS
@@ -112,7 +116,8 @@ class LivySession(ObjectWithGuid):
 
     def start(self):
         """Start the session against actual livy server."""
-        self._spark_events.emit_session_creation_start_event(self.guid, self.kind)
+        self._spark_events.emit_session_creation_start_event(
+            self.guid, self.kind)
         self._printed_resource_warning = False
 
         try:
@@ -121,10 +126,10 @@ class LivySession(ObjectWithGuid):
             self.status = str(r[u"state"])
 
             self.ipython_display.writeln(u"Starting Spark application")
-            
+
             # Start heartbeat thread to keep Livy interactive session alive.
             self._start_heartbeat_thread()
-            
+
             # We wait for livy_session_startup_timeout_seconds() for the session to start up.
             try:
                 self.wait_for_idle(conf.livy_session_startup_timeout_seconds())
@@ -139,26 +144,32 @@ class LivySession(ObjectWithGuid):
             (success, out) = command.execute(self)
 
             if success:
-                self.ipython_display.writeln(u"SparkSession available as 'spark'.")
+                self.ipython_display.writeln(
+                    u"SparkSession available as 'spark'.")
                 self.sql_context_variable_name = "spark"
             else:
                 command = Command("sqlContext")
                 (success, out) = command.execute(self)
                 if success:
-                    self.ipython_display.writeln(u"SparkContext available as 'sc'.")
+                    self.ipython_display.writeln(
+                        u"SparkContext available as 'sc'.")
                     if ("hive" in out.lower()):
-                        self.ipython_display.writeln(u"HiveContext available as 'sqlContext'.")
+                        self.ipython_display.writeln(
+                            u"HiveContext available as 'sqlContext'.")
                     else:
-                        self.ipython_display.writeln(u"SqlContext available as 'sqlContext'.")
+                        self.ipython_display.writeln(
+                            u"SqlContext available as 'sqlContext'.")
                     self.sql_context_variable_name = "sqlContext"
                 else:
-                    raise SqlContextNotFoundException(u"Neither SparkSession nor HiveContext/SqlContext is available.")
+                    raise SqlContextNotFoundException(
+                        u"Neither SparkSession nor HiveContext/SqlContext is available.")
         except Exception as e:
             self._spark_events.emit_session_creation_end_event(self.guid, self.kind, self.id, self.status,
                                                                False, e.__class__.__name__, str(e))
             raise
         else:
-            self._spark_events.emit_session_creation_end_event(self.guid, self.kind, self.id, self.status, True, "", "")
+            self._spark_events.emit_session_creation_end_event(
+                self.guid, self.kind, self.id, self.status, True, "", "")
 
     def get_app_id(self):
         if self._app_id is None:
@@ -197,11 +208,12 @@ class LivySession(ObjectWithGuid):
 
     def delete(self):
         session_id = self.id
-        self._spark_events.emit_session_deletion_start_event(self.guid, self.kind, session_id, self.status)
+        self._spark_events.emit_session_deletion_start_event(
+            self.guid, self.kind, session_id, self.status)
 
         try:
             self.logger.debug(u"Deleting session '{}'".format(session_id))
-            
+
             if self.status != constants.NOT_STARTED_SESSION_STATUS:
                 self._http_client.delete_session(session_id)
                 self._stop_heartbeat_thread()
@@ -210,13 +222,14 @@ class LivySession(ObjectWithGuid):
             else:
                 self.ipython_display.send_error(u"Cannot delete session {} that is in state '{}'."
                                                 .format(session_id, self.status))
-            
+
         except Exception as e:
             self._spark_events.emit_session_deletion_end_event(self.guid, self.kind, session_id, self.status, False,
                                                                e.__class__.__name__, str(e))
             raise
         else:
-            self._spark_events.emit_session_deletion_end_event(self.guid, self.kind, session_id, self.status, True, "", "")
+            self._spark_events.emit_session_deletion_end_event(
+                self.guid, self.kind, session_id, self.status, True, "", "")
 
     def wait_for_idle(self, seconds_to_wait=None):
         """Wait for session to go to idle status. Sleep meanwhile.
@@ -237,7 +250,8 @@ class LivySession(ObjectWithGuid):
                 error = u"Session {} unexpectedly reached final status '{}'."\
                     .format(self.id, self.status)
                 self.logger.error(error)
-                raise LivyUnexpectedStatusException(u'{} See logs:\n{}'.format(error, self.get_logs()))
+                raise LivyUnexpectedStatusException(
+                    u'{} See logs:\n{}'.format(error, self.get_logs()))
 
             if seconds_to_wait <= 0.0:
                 error = u"Session {} did not reach idle status in time. Current status is {}."\
@@ -246,8 +260,8 @@ class LivySession(ObjectWithGuid):
                 raise LivyClientTimeoutException(error)
 
             if constants.YARN_RESOURCE_LIMIT_MSG in self.session_info and \
-                not self._printed_resource_warning:
-                self.ipython_display.send_error(constants.RESOURCE_LIMIT_WARNING\
+                    not self._printed_resource_warning:
+                self.ipython_display.send_error(constants.RESOURCE_LIMIT_WARNING
                                                 .format(conf.resource_limit_mitigation_suggestion()))
                 self._printed_resource_warning = True
 
@@ -274,18 +288,20 @@ class LivySession(ObjectWithGuid):
             self.status = status
             self.session_info = u"\n".join(log_array)
         else:
-           raise LivyUnexpectedStatusException(u"Status '{}' not supported by session.".format(status))
+            raise LivyUnexpectedStatusException(
+                u"Status '{}' not supported by session.".format(status))
 
     def _start_heartbeat_thread(self):
         if self._should_heartbeat and self._heartbeat_thread is None:
             refresh_seconds = conf.heartbeat_refresh_seconds()
             retry_seconds = conf.heartbeat_retry_seconds()
-            
+
             if self._user_passed_heartbeat_thread is None:
-                self._heartbeat_thread = _HeartbeatThread(self, refresh_seconds, retry_seconds)
+                self._heartbeat_thread = _HeartbeatThread(
+                    self, refresh_seconds, retry_seconds)
             else:
                 self._heartbeat_thread = self._user_passed_heartbeat_thread
-            
+
             self._heartbeat_thread.daemon = True
             self._heartbeat_thread.start()
 
@@ -297,7 +313,8 @@ class LivySession(ObjectWithGuid):
     def get_row_html(self, current_session_id):
         return u"""<tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td><td>{6}</td></tr>""".format(
             self.id, self.get_app_id(), self.kind, self.status,
-            self.get_html_link(u'Link', self.get_spark_ui_url()), self.get_html_link(u'Link', self.get_driver_log_url()),
+            self.get_html_link(u'Link', self.get_spark_ui_url()), self.get_html_link(
+                u'Link', self.get_driver_log_url()),
             u"" if current_session_id is None or current_session_id != self.id else u"\u2714"
         )
 
